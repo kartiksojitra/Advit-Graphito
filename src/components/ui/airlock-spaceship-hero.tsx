@@ -161,6 +161,14 @@ export default function AirlockHero({
     /** Only a reader who was handed the page back can hand it over again. */
     let released = false
     let lastY = 0
+    // Perf: small screens get cheaper painting (no per-frame blur filters),
+    // and idle frames skip DOM writes + video seeks entirely.
+    const coarse =
+      typeof window !== "undefined" &&
+      (window.matchMedia?.("(max-width: 640px)").matches ?? false)
+    let lastPaintedP = -1
+    let lastPaintedMoved = false
+    let lastSeekT = -1
 
     const totalDistance = scrubDistance + holdDistance
     /** How much of the input axis the film itself occupies. */
@@ -196,11 +204,27 @@ export default function AirlockHero({
      * a held frame. Ending the moment the film does reads as an abrupt cut.
      */
     function paint(p: number) {
+      // Nothing changed since the last paint — skip every DOM write and seek.
+      // This makes idle frames nearly free, which matters most on mobile.
+      if (Math.abs(p - lastPaintedP) < 0.0004 && moved === lastPaintedMoved) {
+        return
+      }
+      lastPaintedP = p
+      lastPaintedMoved = moved
+
       const videoP = clamp(p / scrubShare, 0, 1)
 
       // Stop a hair short of the duration: seeking to the very end lands
       // past the last decodable frame in some browsers and paints black.
-      if (duration > 0) seekTo(Math.min(videoP * duration, duration - 0.04))
+      // Coalesce tiny seeks: mobile decoders stall if currentTime is poked
+      // 60x/sec, so only seek on a meaningful step.
+      if (duration > 0) {
+        const t = Math.min(videoP * duration, duration - 0.04)
+        if (Math.abs(t - lastSeekT) > Math.max(duration / 400, 0.033)) {
+          lastSeekT = t
+          seekTo(t)
+        }
+      }
 
       const titleAlpha = 1 - clamp(videoP / 0.35, 0, 1)
       const taglineAlpha = clamp((videoP - 0.82) / 0.18, 0, 1)
@@ -217,7 +241,8 @@ export default function AirlockHero({
         const t = titleAlpha
         titleRef.current.style.opacity = String(t)
         titleRef.current.style.transform = `translateY(${(1 - t) * -24}px) scale(${0.96 + t * 0.04})`
-        titleRef.current.style.filter = `blur(${(1 - t) * 10}px)`
+        // Blur filters force a repaint every frame — skip them on small screens.
+        if (!coarse) titleRef.current.style.filter = `blur(${(1 - t) * 10}px)`
       }
       if (hintRef.current) {
         hintRef.current.style.opacity = moved ? "0" : "1"
@@ -228,7 +253,7 @@ export default function AirlockHero({
         const t = taglineAlpha
         taglineRef.current.style.opacity = String(t)
         taglineRef.current.style.transform = `translateY(${(1 - t) * 20}px) scale(${0.97 + t * 0.03})`
-        taglineRef.current.style.filter = `blur(${(1 - t) * 8}px)`
+        if (!coarse) taglineRef.current.style.filter = `blur(${(1 - t) * 8}px)`
       }
       if (barRef.current) {
         barRef.current.style.transform = `scaleX(${p})`
@@ -378,6 +403,8 @@ export default function AirlockHero({
 
       const frame = () => {
         shown += (target - shown) * 0.18
+        // Snap when converged so paint() early-returns and frames go idle.
+        if (Math.abs(target - shown) < 0.0006) shown = target
         paint(shown)
         rafId = requestAnimationFrame(frame)
       }

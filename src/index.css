@@ -51,6 +51,25 @@ body {
   }
 }
 
+/* Cheap flip on small screens: no blur/3D filters, just slide + fade */
+@keyframes flip-digit-mobile {
+  0% {
+    transform: translateY(-40%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .animate-flip-digit {
+    animation-name: flip-digit-mobile;
+    animation-duration: 0.35s;
+  }
+}
+
 /* Gradient divider marquee */
 @keyframes marquee {
   from {

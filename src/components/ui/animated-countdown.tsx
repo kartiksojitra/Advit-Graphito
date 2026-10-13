@@ -37,7 +37,7 @@ function pad(n: number) {
 
 const cardStyles: Record<CountdownVariant, string> = {
   modern:
-    "rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-md shadow-[0_8px_40px_rgba(0,0,0,0.45)]",
+    "rounded-2xl border border-white/10 bg-white/[0.09] shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-none sm:bg-white/[0.05] sm:backdrop-blur-md",
   digital:
     "rounded-lg border border-emerald-300/20 bg-black/70 shadow-[0_0_24px_rgba(52,211,153,0.15)_inset]",
   minimal: "rounded-none border-b border-white/15 bg-transparent",
