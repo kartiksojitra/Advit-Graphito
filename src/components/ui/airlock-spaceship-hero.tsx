@@ -170,9 +170,13 @@ export default function AirlockHero({
     let lastPaintedMoved = false
     let lastSeekT = -1
 
-    const totalDistance = scrubDistance + holdDistance
+    const totalDistance = coarse
+      ? Math.min(scrubDistance, 1400) + Math.min(holdDistance, 500)
+      : scrubDistance + holdDistance
     /** How much of the input axis the film itself occupies. */
-    const scrubShare = scrubDistance / totalDistance
+    const scrubShare = (coarse ? Math.min(scrubDistance, 1400) : scrubDistance) / totalDistance
+    /** Touch swipes cover less ground than a wheel — amplify them on phones. */
+    const touchBoost = coarse ? 2 : 1
 
     /* --- Seeking ------------------------------------------------------- */
 
@@ -345,7 +349,7 @@ export default function AirlockHero({
 
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY ?? touchY
-      const deltaY = touchY - y
+      const deltaY = (touchY - y) * touchBoost
       touchY = y
       if (!locked && deltaY < 0) grabForReverse()
       if (consume(deltaY)) e.preventDefault()
