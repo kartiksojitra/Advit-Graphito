@@ -137,17 +137,26 @@ export default function AirlockHero({
   const scrimRef = useRef<HTMLDivElement>(null)
   const releaseRef = useRef<() => void>(() => {})
   const [ready, setReady] = useState(false)
+  const [loadPct, setLoadPct] = useState(0)
+  const [canScrub, setCanScrub] = useState(false)
 
   const palette = PALETTES[theme]
 
-  // Small screens get the 720p file (1.2MB vs 3.9MB) — far less decode work
-  // while scrubbing, which is where mobile jank comes from.
-  const [renderCoarse] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      (window.matchMedia?.("(max-width: 640px)").matches ?? false)
-  )
-  const resolvedVideoSrc = videoSrc ?? (renderCoarse ? VIDEO_720P : VIDEO_1080P)
+  // Resolution pick: desktop always 1080p; phones get 1080p too when the
+  // network is fast, else the lighter 720p (1.2MB vs 3.9MB).
+  const [resolvedVideoSrc] = useState(() => {
+    if (videoSrc) return videoSrc
+    if (typeof window === "undefined") return VIDEO_1080P
+    const small = window.matchMedia?.("(max-width: 640px)").matches ?? false
+    const conn = (
+      navigator as Navigator & {
+        connection?: { effectiveType?: string; saveData?: boolean }
+      }
+    ).connection
+    const fast =
+      !conn || (!conn.saveData && (!conn.effectiveType || conn.effectiveType === "4g"))
+    return small && !fast ? VIDEO_720P : VIDEO_1080P
+  })
 
   useEffect(() => {
     const video = videoRef.current
@@ -416,8 +425,40 @@ export default function AirlockHero({
     video.addEventListener("loadeddata", onLoadedData)
     video.addEventListener("seeked", onSeeked)
 
+    // Premium scrubbing needs the whole file buffered — seeking an
+    // unbuffered stream stalls and stutters, especially on mobile.
+    // Hold a branded loader until buffered, then engage the lock.
+    let bufferedEnough = false
+    const markBuffered = () => {
+      if (bufferedEnough) return
+      bufferedEnough = true
+      setLoadPct(100)
+      setCanScrub(true)
+      if (!reduceMotion && !locked && !released && window.scrollY <= section.offsetTop + 1) {
+        engageLock()
+      }
+    }
+    const onProgress = () => {
+      try {
+        const v = video!
+        if (v.duration > 0 && v.buffered.length > 0) {
+          const end = v.buffered.end(v.buffered.length - 1)
+          setLoadPct(Math.min(99, Math.round((end / v.duration) * 100)))
+          if (end >= v.duration - 0.25) markBuffered()
+        }
+      } catch {
+        /* buffered info unavailable — fall through to timeout */
+      }
+    }
+    const onCanPlayThrough = () => markBuffered()
+    video.addEventListener("progress", onProgress)
+    video.addEventListener("canplaythrough", onCanPlayThrough)
+    // Instant when cached, patient on 4G, never stuck: hard fallback.
+    if (video.readyState >= 4) markBuffered()
+    const fallbackId = window.setTimeout(markBuffered, 12000)
+
     if (!reduceMotion) {
-      if (window.scrollY <= section.offsetTop + 1) engageLock()
+      if (bufferedEnough && window.scrollY <= section.offsetTop + 1) engageLock()
 
       window.addEventListener("wheel", onWheel, { passive: false })
       window.addEventListener("touchstart", onTouchStart, { passive: true })
@@ -454,6 +495,9 @@ export default function AirlockHero({
     return () => {
       video.removeEventListener("loadeddata", onLoadedData)
       video.removeEventListener("seeked", onSeeked)
+      video.removeEventListener("progress", onProgress)
+      video.removeEventListener("canplaythrough", onCanPlayThrough)
+      window.clearTimeout(fallbackId)
       window.removeEventListener("wheel", onWheel)
       window.removeEventListener("touchstart", onTouchStart)
       window.removeEventListener("touchmove", onTouchMove)
@@ -478,7 +522,7 @@ export default function AirlockHero({
         playsInline
         preload="auto"
         aria-hidden="true"
-        className="absolute inset-0 h-full w-full object-cover"
+        className="airlock-crisp absolute inset-0 h-full w-full object-cover"
         style={{
           opacity: ready ? 1 : 0,
           transformOrigin: "center center",
@@ -486,6 +530,44 @@ export default function AirlockHero({
           transition: "opacity 0.6s ease",
         }}
       />
+
+      {/* Loader: holds the screen until the film is fully buffered,
+          so every scrub seeks from cache instead of stalling the stream. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 transition-opacity duration-700"
+        style={{
+          background: palette.backdrop,
+          opacity: ready && canScrub ? 0 : 1,
+          fontFamily: SANS,
+        }}
+      >
+        <span
+          className="font-extrabold"
+          style={{
+            fontSize: "clamp(13px, 2.4vw, 18px)",
+            letterSpacing: "0.45em",
+            color: palette.text,
+            textIndent: "0.45em",
+          }}
+        >
+          ADV!T GRAPHITO
+        </span>
+        <div className="h-px w-48 overflow-hidden bg-white/15 sm:w-64">
+          <div
+            className="h-full transition-[width] duration-300"
+            style={{
+              width: `${loadPct}%`,
+              background: palette.bar,
+            }}
+          />
+        </div>
+        <span
+          className="font-semibold tabular-nums"
+          style={{ fontSize: 11, letterSpacing: "0.3em", color: palette.muted }}
+        >
+          LOADING {loadPct}%
+        </span>
+      </div>
 
       {/* Top and bottom falloff, so type never fights the sky. */}
       <div
@@ -507,6 +589,11 @@ export default function AirlockHero({
             "radial-gradient(ellipse 62% 44% at 50% 50%, rgba(5,7,13,0.68), rgba(5,7,13,0) 72%)",
         }}
       />
+
+      {/* Cinematic finish: film grain + vignette mask compression artifacts
+          and banding so the backdrop reads clean and sharp, not pixeled. */}
+      <div className="airlock-grain pointer-events-none absolute inset-0" />
+      <div className="airlock-vignette pointer-events-none absolute inset-0" />
 
       <div
         ref={titleRef}
