@@ -89,7 +89,8 @@ export interface AirlockHeroProps {
 // to treat as video. jsDelivr sends video/mp4 and honours range requests, which
 // is what makes seeking work at all.
 const CDN = "https://cdn.jsdelivr.net/gh/yuraoak/airlock-hero-assets@main"
-const DEFAULT_VIDEO = `${CDN}/iss-hero-1080p.mp4`
+const VIDEO_1080P = `${CDN}/iss-hero-1080p.mp4`
+const VIDEO_720P = `${CDN}/iss-hero-720p.mp4`
 const DEFAULT_POSTER = `${CDN}/iss-hero-poster.jpg`
 const SANS =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
@@ -114,7 +115,7 @@ function clamp(v: number, min: number, max: number) {
 /* --- Component --- */
 
 export default function AirlockHero({
-  videoSrc = DEFAULT_VIDEO,
+  videoSrc,
   posterSrc = DEFAULT_POSTER,
   title = "THE AIRLOCK OPENS",
   scrollHint = "SCROLL",
@@ -138,6 +139,15 @@ export default function AirlockHero({
   const [ready, setReady] = useState(false)
 
   const palette = PALETTES[theme]
+
+  // Small screens get the 720p file (1.2MB vs 3.9MB) — far less decode work
+  // while scrubbing, which is where mobile jank comes from.
+  const [renderCoarse] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (window.matchMedia?.("(max-width: 640px)").matches ?? false)
+  )
+  const resolvedVideoSrc = videoSrc ?? (renderCoarse ? VIDEO_720P : VIDEO_1080P)
 
   useEffect(() => {
     const video = videoRef.current
@@ -224,10 +234,12 @@ export default function AirlockHero({
       // Stop a hair short of the duration: seeking to the very end lands
       // past the last decodable frame in some browsers and paints black.
       // Coalesce tiny seeks: mobile decoders stall if currentTime is poked
-      // 60x/sec, so only seek on a meaningful step.
+      // 60x/sec, so only seek on a meaningful step, snapped to a time grid.
       if (duration > 0) {
-        const t = Math.min(videoP * duration, duration - 0.04)
-        if (Math.abs(t - lastSeekT) > Math.max(duration / 400, 0.033)) {
+        const rawT = Math.min(videoP * duration, duration - 0.04)
+        const t = Math.round(rawT * 15) / 15
+        const minStep = coarse ? Math.max(duration / 120, 0.08) : Math.max(duration / 400, 0.033)
+        if (Math.abs(t - lastSeekT) > minStep) {
           lastSeekT = t
           seekTo(t)
         }
@@ -460,7 +472,7 @@ export default function AirlockHero({
     >
       <video
         ref={videoRef}
-        src={videoSrc}
+        src={resolvedVideoSrc}
         poster={posterSrc}
         muted
         playsInline
