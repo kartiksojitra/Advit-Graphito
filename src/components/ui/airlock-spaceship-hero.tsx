@@ -191,6 +191,8 @@ export default function AirlockHero({
     /** Auto-glide: a small scroll nudge plays the whole sequence slowly. */
     let autoDir: 0 | 1 | -1 = 0
     const AUTO_SPEED = 1 / 8 // full glide ≈ 8 seconds
+    /** Forward glides use native playback (butter-smooth); reverse uses seeks. */
+    let nativePlaying = false
 
     const totalDistance = coarse
       ? Math.min(scrubDistance, 1400) + Math.min(holdDistance, 500)
@@ -221,6 +223,41 @@ export default function AirlockHero({
       }
     }
 
+    function stopNative() {
+      nativePlaying = false
+      try {
+        video!.pause()
+      } catch {
+        /* noop */
+      }
+    }
+
+    /**
+     * Align the film once, then let the decoder play natively at the glide
+     * rate. Falls back to seek-glide if playback is refused.
+     */
+    function startNative() {
+      if (duration <= 0 || nativePlaying) return
+      try {
+        video!.playbackRate = clamp((duration * AUTO_SPEED) / scrubShare, 0.5, 2)
+        video!.currentTime = Math.min((target / scrubShare) * duration, duration - 0.04)
+        const pr = video!.play()
+        if (pr && typeof (pr as Promise<void>).then === "function") {
+          ;(pr as Promise<void>)
+            .then(() => {
+              nativePlaying = true
+            })
+            .catch(() => {
+              nativePlaying = false
+            })
+        } else {
+          nativePlaying = true
+        }
+      } catch {
+        nativePlaying = false
+      }
+    }
+
     /* --- Painting ------------------------------------------------------ */
 
     /**
@@ -244,7 +281,8 @@ export default function AirlockHero({
       // past the last decodable frame in some browsers and paints black.
       // Coalesce tiny seeks: mobile decoders stall if currentTime is poked
       // 60x/sec, so only seek on a meaningful step, snapped to a time grid.
-      if (duration > 0) {
+      // Skipped while playing natively — the decoder drives itself.
+      if (!nativePlaying && duration > 0) {
         const rawT = Math.min(videoP * duration, duration - 0.04)
         const t = Math.round(rawT * 15) / 15
         const minStep = coarse ? Math.max(duration / 120, 0.08) : Math.max(duration / 400, 0.033)
@@ -306,6 +344,7 @@ export default function AirlockHero({
     function releaseLock() {
       if (!locked) return
       autoDir = 0
+      stopNative()
       locked = false
       const y = lockedY
       const b = document.body.style
@@ -343,7 +382,13 @@ export default function AirlockHero({
       }
       // A small nudge kicks off a slow auto-glide through the whole film.
       // An opposite flick reverses it; reaching either end stops it.
-      if (Math.abs(deltaY) > 4) autoDir = deltaY > 0 ? 1 : -1
+      // Forward glides play natively (smooth); reverse glides seek.
+      if (Math.abs(deltaY) > 4) {
+        const dir = (deltaY > 0 ? 1 : -1) as 0 | 1 | -1
+        if (dir < 0 && nativePlaying) stopNative()
+        autoDir = dir
+        if (dir > 0) startNative()
+      }
       target = clamp(target + deltaY / totalDistance, 0, 1)
       if (target > 0.001) moved = true
       return true
@@ -471,8 +516,17 @@ export default function AirlockHero({
         const dt = Math.min((now - lastT) / 1000, 0.1)
         lastT = now
         // Auto-glide: keep drifting after a nudge until an end is reached.
+        // Forward motion is native playback — sync progress to real frames.
         if (locked && autoDir !== 0) {
-          target = clamp(target + autoDir * AUTO_SPEED * dt, 0, 1)
+          if (nativePlaying && duration > 0) {
+            if (video.ended) {
+              stopNative()
+            } else {
+              target = clamp((video.currentTime / duration) * scrubShare, 0, 1)
+            }
+          } else {
+            target = clamp(target + autoDir * AUTO_SPEED * dt, 0, 1)
+          }
           if (target >= 1 && autoDir > 0) {
             // Hand the page back only once the picture has caught up.
             if (shown > 0.98) {
@@ -483,7 +537,7 @@ export default function AirlockHero({
             autoDir = 0
           }
         }
-        shown += (target - shown) * 0.18
+        shown += (target - shown) * 0.15
         // Snap when converged so paint() early-returns and frames go idle.
         if (Math.abs(target - shown) < 0.0006) shown = target
         paint(shown)
