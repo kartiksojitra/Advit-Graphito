@@ -169,6 +169,9 @@ export default function AirlockHero({
     let lastPaintedP = -1
     let lastPaintedMoved = false
     let lastSeekT = -1
+    /** Auto-glide: a small scroll nudge plays the whole sequence slowly. */
+    let autoDir: 0 | 1 | -1 = 0
+    const AUTO_SPEED = 1 / 8 // full glide ≈ 8 seconds
 
     const totalDistance = coarse
       ? Math.min(scrubDistance, 1400) + Math.min(holdDistance, 500)
@@ -281,6 +284,7 @@ export default function AirlockHero({
 
     function releaseLock() {
       if (!locked) return
+      autoDir = 0
       locked = false
       const y = lockedY
       const b = document.body.style
@@ -312,9 +316,13 @@ export default function AirlockHero({
       // Wait for the picture to catch up with the input before letting go,
       // otherwise a single hard flick throws the page on a half-played shot.
       if (target >= 1 && shown > 0.98 && deltaY > 0) {
+        autoDir = 0
         releaseLock()
         return false
       }
+      // A small nudge kicks off a slow auto-glide through the whole film.
+      // An opposite flick reverses it; reaching either end stops it.
+      if (Math.abs(deltaY) > 4) autoDir = deltaY > 0 ? 1 : -1
       target = clamp(target + deltaY / totalDistance, 0, 1)
       if (target > 0.001) moved = true
       return true
@@ -405,7 +413,23 @@ export default function AirlockHero({
       window.addEventListener("keydown", onKeyDown)
       window.addEventListener("scroll", onScroll, { passive: true })
 
-      const frame = () => {
+      let lastT = performance.now()
+      const frame = (now: number) => {
+        const dt = Math.min((now - lastT) / 1000, 0.1)
+        lastT = now
+        // Auto-glide: keep drifting after a nudge until an end is reached.
+        if (locked && autoDir !== 0) {
+          target = clamp(target + autoDir * AUTO_SPEED * dt, 0, 1)
+          if (target >= 1 && autoDir > 0) {
+            // Hand the page back only once the picture has caught up.
+            if (shown > 0.98) {
+              autoDir = 0
+              releaseLock()
+            }
+          } else if (target <= 0 && autoDir < 0) {
+            autoDir = 0
+          }
+        }
         shown += (target - shown) * 0.18
         // Snap when converged so paint() early-returns and frames go idle.
         if (Math.abs(target - shown) < 0.0006) shown = target
