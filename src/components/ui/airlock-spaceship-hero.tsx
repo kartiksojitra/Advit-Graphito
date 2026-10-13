@@ -60,6 +60,8 @@ export interface AirlockHeroProps {
   posterSrc?: string
   /** Headline over the opening frames. Fades out as the scrub starts. */
   title?: string
+  /** Brand logo image shown at the hero opening instead of the text title. */
+  logoSrc?: string
   /** Word next to the bouncing arrow. Hidden once the reader moves. */
   scrollHint?: string
   /** Payoff line, revealed over the last fifth of the scrub. Pass "" to drop it. */
@@ -94,6 +96,7 @@ const VIDEO_720P = `${CDN}/iss-hero-720p.mp4`
 const DEFAULT_POSTER = `${CDN}/iss-hero-poster.jpg`
 const SANS =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+const POPPINS = "'Poppins', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 /** Keyboard fallback, so a reader without a wheel is never stuck. */
 const KEY_STEPS: Record<string, number> = {
@@ -118,6 +121,7 @@ export default function AirlockHero({
   videoSrc,
   posterSrc = DEFAULT_POSTER,
   title = "THE AIRLOCK OPENS",
+  logoSrc,
   scrollHint = "SCROLL",
   tagline = "Everything you know fits in one half of the frame.",
   signature = false,
@@ -139,6 +143,7 @@ export default function AirlockHero({
   const [ready, setReady] = useState(false)
   const [loadPct, setLoadPct] = useState(0)
   const [canScrub, setCanScrub] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
 
   const palette = PALETTES[theme]
 
@@ -653,18 +658,33 @@ export default function AirlockHero({
         ref={titleRef}
         className="pointer-events-none absolute inset-0 flex items-center justify-center px-[6%] text-center"
       >
-        <h1
-          className="inline-block font-extrabold leading-none tracking-[-0.02em]"
-          style={{
-            fontFamily: SANS,
-            fontSize: "clamp(30px, 7vw, 96px)",
-            color: palette.text,
-            textShadow: "0 4px 30px rgba(0,0,0,0.55)",
-            willChange: "transform, filter, opacity",
-          }}
-        >
-          {title}
-        </h1>
+        {logoSrc && !logoFailed ? (
+          <img
+            src={logoSrc}
+            alt={title}
+            onError={() => setLogoFailed(true)}
+            draggable={false}
+            style={{
+              width: "clamp(240px, 44vw, 580px)",
+              height: "auto",
+              filter: "drop-shadow(0 6px 30px rgba(0,0,0,0.55))",
+              willChange: "transform, filter, opacity",
+            }}
+          />
+        ) : (
+          <h1
+            className="inline-block font-extrabold leading-none tracking-[-0.02em]"
+            style={{
+              fontFamily: SANS,
+              fontSize: "clamp(30px, 7vw, 96px)",
+              color: palette.text,
+              textShadow: "0 4px 30px rgba(0,0,0,0.55)",
+              willChange: "transform, filter, opacity",
+            }}
+          >
+            {title}
+          </h1>
+        )}
       </div>
 
       {tagline ? (
@@ -673,9 +693,9 @@ export default function AirlockHero({
           className="pointer-events-none absolute inset-0 flex items-center justify-center px-[8%] text-center opacity-0"
         >
           <div
-            className="flex flex-col items-center gap-3 font-bold tracking-[-0.01em]"
+            className="flex w-full flex-col items-center gap-4 font-bold tracking-[-0.01em]"
             style={{
-              fontFamily: SANS,
+              fontFamily: POPPINS,
               lineHeight: 1.2,
               color: palette.text,
               textShadow: "0 4px 24px rgba(0,0,0,0.6)",
@@ -684,30 +704,46 @@ export default function AirlockHero({
             {tagline.includes("\n") ? (
               <>
                 <span
+                  className="block text-center"
                   style={{
-                    fontSize: "clamp(11px, 1.8vw, 16px)",
-                    fontWeight: 700,
+                    fontSize: "clamp(10px, 1.6vw, 14px)",
+                    fontWeight: 400,
                     letterSpacing: "0.35em",
+                    textIndent: "0.35em",
+                    textTransform: "lowercase",
                     color: palette.muted,
                   }}
                 >
                   {tagline.split("\n")[0]}
                 </span>
                 <span
+                  className="block text-center"
                   style={{
-                    fontSize: "clamp(24px, 4.6vw, 56px)",
-                    fontWeight: 800,
+                    fontSize: "clamp(17px, 3.2vw, 39px)",
+                    fontWeight: 300,
+                    maxWidth: "26ch",
+                    lineHeight: 1.25,
+                    textWrap: "balance",
+                    textTransform: "lowercase",
                   }}
                 >
                   {tagline.split("\n").slice(1).join(" ")}
                 </span>
                 {/* Countdown under the tagline — fades in with it */}
-                <AnimatedCountdown variant="modern" className="mt-3 origin-center scale-[0.65] sm:scale-[0.8]" />
+                <AnimatedCountdown
+                  variant="modern"
+                  className="mt-5 origin-center scale-[0.65] sm:scale-[0.8]"
+                />
               </>
             ) : (
               <span
+                className="block text-center"
                 style={{
-                  fontSize: "clamp(20px, 3.4vw, 40px)",
+                  fontSize: "clamp(14px, 2.4vw, 28px)",
+                  fontWeight: 300,
+                  maxWidth: "30ch",
+                  textWrap: "balance",
+                  textTransform: "lowercase",
                 }}
               >
                 {tagline}
