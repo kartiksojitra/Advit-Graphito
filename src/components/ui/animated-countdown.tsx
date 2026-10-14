@@ -35,6 +35,30 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
+const LAUNCH_KEY = "advitgraphito-launch-at";
+const DEFAULT_OFFSET_MS = 21 * 86_400_000 + 8 * 3_600_000 + 42 * 60_000;
+
+/**
+ * One fixed deadline per browser: stored on first visit so reloads keep
+ * counting to the same moment instead of restarting every time.
+ */
+function resolveDefaultTarget(): number {
+  try {
+    const raw = window.localStorage.getItem(LAUNCH_KEY);
+    const saved = raw ? parseInt(raw, 10) : NaN;
+    if (Number.isFinite(saved) && saved > 0) return saved;
+  } catch {
+    /* storage unavailable — fall through to a fresh deadline */
+  }
+  const fresh = Date.now() + DEFAULT_OFFSET_MS;
+  try {
+    window.localStorage.setItem(LAUNCH_KEY, String(fresh));
+  } catch {
+    /* ignore */
+  }
+  return fresh;
+}
+
 const cardStyles: Record<CountdownVariant, string> = {
   modern:
     "rounded-2xl border border-white/10 bg-white/[0.09] shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-none sm:bg-white/[0.05] sm:backdrop-blur-md",
@@ -97,8 +121,7 @@ export default function AnimatedCountdown({
 }: AnimatedCountdownProps) {
   const target = useMemo(() => {
     if (targetDate !== undefined) return new Date(targetDate).getTime();
-    // Default: ~21 days out so the demo always has something to count.
-    return Date.now() + 21 * 86_400_000 + 8 * 3_600_000 + 42 * 60_000;
+    return resolveDefaultTarget();
   }, [targetDate]);
 
   const [left, setLeft] = useState<TimeLeft>(() => getTimeLeft(target));

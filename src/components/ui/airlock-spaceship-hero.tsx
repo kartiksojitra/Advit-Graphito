@@ -78,8 +78,6 @@ export interface AirlockHeroProps {
   holdDistance?: number
   /** Named colour set. */
   theme?: AirlockTheme
-  /** Label for the control that hands the page back without scrubbing. */
-  skipLabel?: string
   className?: string
   style?: React.CSSProperties
 }
@@ -128,7 +126,6 @@ export default function AirlockHero({
   scrubDistance = 3200,
   holdDistance = 1100,
   theme = "vacuum",
-  skipLabel = "Skip intro",
   className,
   style,
 }: AirlockHeroProps) {
@@ -139,7 +136,6 @@ export default function AirlockHero({
   const taglineRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const scrimRef = useRef<HTMLDivElement>(null)
-  const releaseRef = useRef<() => void>(() => {})
   const [ready, setReady] = useState(false)
   const [loadPct, setLoadPct] = useState(0)
   const [canScrub, setCanScrub] = useState(false)
@@ -361,13 +357,6 @@ export default function AirlockHero({
       window.scrollTo(0, y)
       released = true
       lastY = y
-    }
-
-    releaseRef.current = () => {
-      target = shown = 1
-      moved = true
-      paint(1)
-      releaseLock()
     }
 
     /**
@@ -826,21 +815,6 @@ export default function AirlockHero({
           />
         </svg>
       </div>
-
-      {/* Never trap anyone: a keyboard-reachable way straight to the page. */}
-      <button
-        type="button"
-        onClick={() => releaseRef.current()}
-        className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-        style={{
-          fontFamily: SANS,
-          color: palette.text,
-          background: "rgba(5,7,13,0.7)",
-          letterSpacing: "0.08em",
-        }}
-      >
-        {skipLabel}
-      </button>
 
       {/* Thin progress line — fills as the video advances. */}
       <div
