@@ -6,7 +6,7 @@ export default function App() {
       <AirlockHero
         title="ADV!T GRAPHITO"
         logoSrc="/logo.png"
-        tagline={"WEBSITE UNDER CONSTRUCTION\nA New Creative Galaxy Is About to Unfold"}
+        tagline={"WEBSITE UNDER CONSTRUCTION\nA new creative galaxy is about to unfold"}
         scrollHint="SCROLL"
         theme="vacuum"
         scrubDistance={3200}

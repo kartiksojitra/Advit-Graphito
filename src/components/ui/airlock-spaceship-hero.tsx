@@ -242,7 +242,7 @@ export default function AirlockHero({
      * rate. Falls back to seek-glide if playback is refused.
      */
     function startNative() {
-      if (duration <= 0 || nativePlaying) return
+      if (!(duration > 0) || nativePlaying) return
       try {
         video!.playbackRate = clamp((duration * AUTO_SPEED) / scrubShare, 0.5, 2)
         video!.currentTime = Math.min((target / scrubShare) * duration, duration - 0.04)
@@ -378,6 +378,10 @@ export default function AirlockHero({
      */
     function consume(deltaY: number) {
       if (!locked) return false
+      // Ignore all input while the loader is up: a pre-reveal nudge would
+      // otherwise arm the auto-glide and play the film unattended, so the
+      // reveal would land on the last frame instead of the opening.
+      if (!revealed) return false
       // Wait for the picture to catch up with the input before letting go,
       // otherwise a single hard flick throws the page on a half-played shot.
       if (target >= 1 && shown > 0.98 && deltaY > 0) {
@@ -463,12 +467,15 @@ export default function AirlockHero({
 
     const onLoadedData = () => {
       duration = video!.duration || 0
+      hasData = true
       setReady(true)
       if (reduceMotion) {
         // Hold the payoff frame and leave the page alone.
         target = shown = 1
         moved = true
         paint(1)
+      } else {
+        checkReveal()
       }
     }
 
@@ -479,14 +486,43 @@ export default function AirlockHero({
     // unbuffered stream stalls and stutters, especially on mobile.
     // Hold a branded loader until buffered, then engage the lock.
     let bufferedEnough = false
+    let hasData = false
+    let revealed = false
+    /**
+     * First reveal: the loader clears only when the first frame is decoded
+     * AND the file is buffered. Reset hard to the opening frame so no stray
+     * input or seek can leave the reveal sitting on the last frame.
+     */
+    const checkReveal = () => {
+      if (revealed || !hasData || !bufferedEnough) return
+      revealed = true
+      target = 0
+      shown = 0
+      moved = false
+      autoDir = 0
+      stopNative()
+      try {
+        video!.pause()
+      } catch {
+        /* noop */
+      }
+      // Bust the idle-skip caches so the opening seek is really issued —
+      // without this, mobile browsers keep showing the poster (end frame).
+      lastPaintedP = -1
+      lastPaintedMoved = false
+      lastSeekT = -1
+      if (duration > 0) seekTo(0)
+      paint(0)
+      if (!reduceMotion && !locked && !released && window.scrollY <= section.offsetTop + 1) {
+        engageLock()
+      }
+    }
     const markBuffered = () => {
       if (bufferedEnough) return
       bufferedEnough = true
       setLoadPct(100)
       setCanScrub(true)
-      if (!reduceMotion && !locked && !released && window.scrollY <= section.offsetTop + 1) {
-        engageLock()
-      }
+      checkReveal()
     }
     const onProgress = () => {
       try {
@@ -707,7 +743,7 @@ export default function AirlockHero({
                   className="block text-center"
                   style={{
                     fontSize: "clamp(10px, 1.6vw, 14px)",
-                    fontWeight: 400,
+                    fontWeight: 600,
                     letterSpacing: "0.35em",
                     textIndent: "0.35em",
                     textTransform: "lowercase",
@@ -720,11 +756,10 @@ export default function AirlockHero({
                   className="block text-center"
                   style={{
                     fontSize: "clamp(17px, 3.2vw, 39px)",
-                    fontWeight: 300,
+                    fontWeight: 700,
                     maxWidth: "26ch",
                     lineHeight: 1.25,
                     textWrap: "balance",
-                    textTransform: "lowercase",
                   }}
                 >
                   {tagline.split("\n").slice(1).join(" ")}
