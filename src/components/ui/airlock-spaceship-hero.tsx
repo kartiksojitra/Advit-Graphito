@@ -88,10 +88,10 @@ export interface AirlockHeroProps {
 // file back as application/octet-stream with nosniff, which browsers may refuse
 // to treat as video. jsDelivr sends video/mp4 and honours range requests, which
 // is what makes seeking work at all.
-const CDN = "https://cdn.jsdelivr.net/gh/yuraoak/airlock-hero-assets@main"
-const VIDEO_1080P = `${CDN}/iss-hero-1080p.mp4`
-const VIDEO_720P = `${CDN}/iss-hero-720p.mp4`
-const DEFAULT_POSTER = `${CDN}/iss-hero-poster.jpg`
+// Self-hosted assets (public/videos): no third-party CDN in the loop, so a
+// blocked or crawling CDN can never stall the hero.
+const VIDEO_720P = "/videos/iss-hero-720p.mp4"
+const DEFAULT_POSTER = "/videos/iss-hero-poster.jpg"
 const SANS =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 const POPPINS = "'Poppins', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
@@ -140,23 +140,15 @@ export default function AirlockHero({
   const [loadPct, setLoadPct] = useState(0)
   const [canScrub, setCanScrub] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
+  const [videoFailed, setVideoFailed] = useState(false)
 
   const palette = PALETTES[theme]
 
-  // Resolution pick: desktop always 1080p; phones get 1080p too when the
-  // network is fast, else the lighter 720p (1.2MB vs 3.9MB).
+  // Explicit videoSrc prop always wins; otherwise everyone gets the
+  // self-hosted 720p — reliable everywhere, light on mobile decoders.
   const [resolvedVideoSrc] = useState(() => {
     if (videoSrc) return videoSrc
-    if (typeof window === "undefined") return VIDEO_1080P
-    const small = window.matchMedia?.("(max-width: 640px)").matches ?? false
-    const conn = (
-      navigator as Navigator & {
-        connection?: { effectiveType?: string; saveData?: boolean }
-      }
-    ).connection
-    const fast =
-      !conn || (!conn.saveData && (!conn.effectiveType || conn.effectiveType === "4g"))
-    return small && !fast ? VIDEO_720P : VIDEO_1080P
+    return VIDEO_720P
   })
 
   useEffect(() => {
@@ -526,11 +518,24 @@ export default function AirlockHero({
       }
     }
     const onCanPlayThrough = () => markBuffered()
+    const onVideoError = () => {
+      // Stream dead (blocked/slow network): reveal gracefully on the dark
+      // backdrop with title + tagline instead of hanging on the loader.
+      // The end-frame poster is hidden so it can't masquerade as content.
+      setVideoFailed(true)
+      setReady(true)
+      markBuffered()
+    }
     video.addEventListener("progress", onProgress)
     video.addEventListener("canplaythrough", onCanPlayThrough)
-    // Instant when cached, patient on 4G, never stuck: hard fallback.
+    video.addEventListener("error", onVideoError)
+    // Instant when cached, patient on 4G, never stuck: hard fallback that
+    // also clears the loader even if the stream never produced a frame.
     if (video.readyState >= 4) markBuffered()
-    const fallbackId = window.setTimeout(markBuffered, 12000)
+    const fallbackId = window.setTimeout(() => {
+      setReady(true)
+      markBuffered()
+    }, 12000)
 
     if (!reduceMotion) {
       if (bufferedEnough && window.scrollY <= section.offsetTop + 1) engageLock()
@@ -581,6 +586,7 @@ export default function AirlockHero({
       video.removeEventListener("seeked", onSeeked)
       video.removeEventListener("progress", onProgress)
       video.removeEventListener("canplaythrough", onCanPlayThrough)
+      video.removeEventListener("error", onVideoError)
       window.clearTimeout(fallbackId)
       window.removeEventListener("wheel", onWheel)
       window.removeEventListener("touchstart", onTouchStart)
@@ -608,7 +614,7 @@ export default function AirlockHero({
         aria-hidden="true"
         className="airlock-crisp absolute inset-0 h-full w-full object-cover"
         style={{
-          opacity: ready ? 1 : 0,
+          opacity: ready && !videoFailed ? 1 : 0,
           transformOrigin: "center center",
           willChange: "transform",
           transition: "opacity 0.6s ease",
