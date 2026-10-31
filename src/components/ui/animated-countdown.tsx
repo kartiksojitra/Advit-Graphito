@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export type CountdownVariant = "modern" | "digital" | "minimal" | "classic";
 
 export interface AnimatedCountdownProps {
-  /** Target date to count down to. Defaults to ~21 days from first render. */
+  /** Target date to count down to. Defaults to 15 days from first visit. */
   targetDate?: Date | number | string;
   /** Visual style. */
   variant?: CountdownVariant;
@@ -35,8 +35,8 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-const LAUNCH_KEY = "advitgraphito-launch-at";
-const DEFAULT_OFFSET_MS = 21 * 86_400_000 + 8 * 3_600_000 + 42 * 60_000;
+const LAUNCH_KEY = "advitgraphito-launch-at-v2";
+const DEFAULT_OFFSET_MS = 15 * 86_400_000;
 
 /**
  * One fixed deadline per browser: stored on first visit so reloads keep
